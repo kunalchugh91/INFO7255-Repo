@@ -78,7 +78,11 @@ public class HomeController {
 	// to delete json instance with key id from redis
 	@DeleteMapping("/delete/{id}")
 	public ResponseEntity<String> delete(@PathVariable(name="id", required=true) String id) {
-		return new ResponseEntity<String>("invalid", HttpStatus.BAD_REQUEST);
+		
+		if(jedisBean.delete(id))
+			return new ResponseEntity<String>(id+" deleted successfully", HttpStatus.ACCEPTED);
+		else
+			return new ResponseEntity<String>("Deletion unsuccessfull", HttpStatus.BAD_REQUEST);
 	}
 	
 	

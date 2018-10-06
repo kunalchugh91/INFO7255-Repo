@@ -76,5 +76,19 @@ public class JedisBean {
 		return set;
 	}
 	
+	public boolean delete(String uuid) {
+		try {
+			Jedis jedis = pool.getResource();
+			Set<String> keys = jedis.keys(uuid+"*");
+			for(String key : keys) {
+				jedis.del(key);
+			}
+			return true;
+		} catch(JedisException e) {
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
 }	
 
