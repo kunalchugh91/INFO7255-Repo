@@ -8,7 +8,9 @@ import java.io.InputStream;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,7 +52,14 @@ public class HomeController {
 	// to read json instance from redis
 	@GetMapping("/read/{id}")
 	public ResponseEntity<String> read(@PathVariable(name="id", required=true) String id) {
-		return new ResponseEntity<String>("invalid", HttpStatus.BAD_REQUEST);
+		HttpHeaders headers = new HttpHeaders();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		System.out.println("Reading");
+		String jsonString = jedisBean.read(id);
+		if(jsonString != null)
+			return new ResponseEntity<String>(jsonString, headers, HttpStatus.ACCEPTED);
+		else
+			return new ResponseEntity<String>("Read unsuccessfull", headers, HttpStatus.BAD_REQUEST);
 	}
 	
 	
@@ -86,13 +95,13 @@ public class HomeController {
 	}
 	
 	
-	// to update json instance with key id in redis
+	// to update Json instance with key id in Redis
 	@PutMapping("/update/{id}")
 	public ResponseEntity<String> update(@PathVariable(name="id", required=true) String id, @RequestBody(required=true) String body) {
 		
 		//if id does not exist
-		if(id)
-		return insert(body);
+		if(!jedisBean.doesKeyExist(id))
+			return insert(body);
 		
 		//else
 		Schema schema = validator.getSchema();
@@ -101,11 +110,14 @@ public class HomeController {
 		
 		JSONObject jsonObject = validator.getJsonObjectFromString(body);
 		
-		if(validator.validate(jsonObject))
-			return new ResponseEntity<String>("valid", HttpStatus.ACCEPTED);
+		if(!validator.validate(jsonObject))
+			return new ResponseEntity<String>("JSON body invalid", HttpStatus.BAD_REQUEST);
 		
-		else
-			return new ResponseEntity<String>("invalid", HttpStatus.BAD_REQUEST);
+		if(!jedisBean.update(jsonObject, id))
+			return new ResponseEntity<String>("Failed to update JSON instance in Redis", HttpStatus.BAD_REQUEST);
+		
+		return new ResponseEntity<String>("JSON instance updated in redis", HttpStatus.ACCEPTED);
+	
 	}
 
 

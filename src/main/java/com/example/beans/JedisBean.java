@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import io.lettuce.core.RedisException;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.exceptions.JedisException;
@@ -25,13 +26,13 @@ public class JedisBean {
 	
 	public UUID insert(JSONObject jsonObject) {
 		UUID idOne = UUID.randomUUID();
-		if(insertUtil(jsonObject, idOne))
+		if(insertUtil(jsonObject, idOne.toString()))
 			return idOne;
 		else
 			return null;
 	}
 	
-	private boolean insertUtil(JSONObject jsonObject, UUID uuid) {
+	private boolean insertUtil(JSONObject jsonObject, String uuid) {
 		
 		try {
 			Jedis jedis = pool.getResource();
@@ -51,8 +52,11 @@ public class JedisBean {
 					jedis.set(attributeKey, String.valueOf(attributeVal));
 				}
 			}
+			jedis.sadd("MyApplicationKeys", uuid);
+			jedis.close();
 		}
 		catch(JedisException e) {
+			e.printStackTrace();
 			return false;
 		}
 		
@@ -83,7 +87,89 @@ public class JedisBean {
 			for(String key : keys) {
 				jedis.del(key);
 			}
+			jedis.srem("MyApplicationKeys", uuid);
+			jedis.close();
 			return true;
+		} catch(JedisException e) {
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	public String read(String uuid) {
+		
+			
+			System.out.println("Calling readutil");
+			JSONObject jsonObject = readUtil(uuid);
+			if(jsonObject != null)
+				return jsonObject.toString();
+			else
+				return null;
+	}
+	
+	private JSONObject readUtil(String uuid) {
+		try {
+			Jedis jedis = pool.getResource();
+			JSONObject o = new JSONObject();
+			System.out.println("Reading keys from pattern");
+			Set<String> keys = jedis.keys(uuid+"*");
+			for(String k : keys) {
+				System.out.println(k);
+			}
+			for(String key : keys) {
+				if(jedis.type(key).equalsIgnoreCase("set")) {
+					JSONArray ja = new JSONArray();
+					Set<String> set = jedis.smembers(key);
+					for(String member : set) {
+						ja.put(new JSONObject(member));
+					}
+					o.put(key.substring(uuid.length()+1), ja);
+				} else if (jedis.type(key).equalsIgnoreCase("hash")) {
+					Map<String, String> map = jedis.hgetAll(key);
+					JSONObject n = new JSONObject();
+					for(String k : map.keySet()) {
+						n.put(k, map.get(k));
+					}
+					o.put(key.substring(uuid.length()+1), n);
+				} else {
+					o.put(key.substring(uuid.length()+1), jedis.get(key));
+				}
+			}
+			jedis.close();
+			return o;
+		} catch(RedisException e) {
+			e.printStackTrace();
+            return null;
+		}
+	}
+	
+	public boolean doesKeyExist(String uuid) {
+		
+		try {
+			Jedis jedis = pool.getResource();
+			if(jedis.sismember("MyApplicationKeys", uuid)) {
+				jedis.close();
+				return true;
+			} else {
+				jedis.close();
+				return false;
+			}
+		} catch(JedisException e) {
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	public boolean update(JSONObject jsonObject, String uuid) {
+		try {
+			Jedis jedis = pool.getResource();
+			if( delete(uuid) && insertUtil(jsonObject, uuid)) {
+				jedis.close();
+				return true;
+			} else {
+				jedis.close();
+				return false;
+			}
 		} catch(JedisException e) {
 			e.printStackTrace();
 			return false;
