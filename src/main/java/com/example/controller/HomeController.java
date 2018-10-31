@@ -50,7 +50,7 @@ public class HomeController {
 	}
 
 	// to read json instance from redis
-	@GetMapping("/read/{id}")
+	@GetMapping("/Plan/{id}")
 	public ResponseEntity<String> read(@PathVariable(name="id", required=true) String id) {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
@@ -64,7 +64,7 @@ public class HomeController {
 	
 	
 	// to insert new json instance into redis
-	@PostMapping("/insert")
+	@PostMapping("/Plan")
 	public ResponseEntity<String> insert(@RequestBody(required=true) String body) {
 		
 		Schema schema = validator.getSchema();
@@ -74,7 +74,7 @@ public class HomeController {
 		JSONObject jsonObject = validator.getJsonObjectFromString(body);
 		
 		if(validator.validate(jsonObject)) {
-			UUID uuid = jedisBean.insert(jsonObject);
+			String uuid = jedisBean.insert(jsonObject);
 			return new ResponseEntity<String>("Inserted with id "+uuid, HttpStatus.ACCEPTED);
 		}
 		else {
@@ -85,7 +85,7 @@ public class HomeController {
 	
 	
 	// to delete json instance with key id from redis
-	@DeleteMapping("/delete/{id}")
+	@DeleteMapping("/Plan/{id}")
 	public ResponseEntity<String> delete(@PathVariable(name="id", required=true) String id) {
 		
 		if(jedisBean.delete(id))
@@ -96,24 +96,16 @@ public class HomeController {
 	
 	
 	// to update Json instance with key id in Redis
-	@PutMapping("/update/{id}")
-	public ResponseEntity<String> update(@PathVariable(name="id", required=true) String id, @RequestBody(required=true) String body) {
+	@PutMapping("/Plan")
+	public ResponseEntity<String> update(@RequestBody(required=true) String body) {
 		
-		//if id does not exist
-		if(!jedisBean.doesKeyExist(id))
-			return insert(body);
-		
-		//else
 		Schema schema = validator.getSchema();
 		if(schema == null)
 			return new ResponseEntity<String>("schema file not found exception", HttpStatus.BAD_REQUEST);
 		
 		JSONObject jsonObject = validator.getJsonObjectFromString(body);
 		
-		if(!validator.validate(jsonObject))
-			return new ResponseEntity<String>("JSON body invalid", HttpStatus.BAD_REQUEST);
-		
-		if(!jedisBean.update(jsonObject, id))
+		if(!jedisBean.update(jsonObject))
 			return new ResponseEntity<String>("Failed to update JSON instance in Redis", HttpStatus.BAD_REQUEST);
 		
 		return new ResponseEntity<String>("JSON instance updated in redis", HttpStatus.ACCEPTED);

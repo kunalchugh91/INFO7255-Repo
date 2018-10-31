@@ -2,6 +2,7 @@ package com.example.beans;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -19,15 +20,41 @@ public class JedisBean {
 	private static final String redisHost = "localhost";
 	private static final Integer redisPort = 6379;
 	private static JedisPool pool = null;
+	private static final String SEP = "____";
 	
 	public JedisBean() {
 		pool = new JedisPool(redisHost, redisPort);
 	}
 	
-	public UUID insert(JSONObject jsonObject) {
-		UUID idOne = UUID.randomUUID();
-		if(insertUtil(jsonObject, idOne.toString()))
-			return idOne;
+	// methods for schema insertion, deletion, read
+	public boolean insertSchema(String schema) {
+		try {
+			Jedis jedis = pool.getResource();
+			if(jedis.set("plan_schema", schema).equals("OK"))
+				return true;
+			else
+				return false;
+		} catch (JedisException e) {
+			e.printStackTrace();
+			return false;
+		}
+	}
+	
+	public String getSchema() {
+		try {
+			Jedis jedis = pool.getResource();
+			return jedis.get("plan_schema");
+		} catch(JedisException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+	// insert plan
+	public String insert(JSONObject jsonObject) {
+		String idOne = jsonObject.getString("objectType") + SEP + jsonObject.getString("objectId");
+		if(insertUtil(jsonObject, idOne))
+			return jsonObject.getString("objectId");
 		else
 			return null;
 	}
@@ -36,23 +63,38 @@ public class JedisBean {
 		
 		try {
 			Jedis jedis = pool.getResource();
+			Map<String,String> simpleMap = new HashMap<String,String>();
 			
 			for(Object key : jsonObject.keySet()) {
-				String attributeKey = uuid + "_" + String.valueOf(key);
+				String attributeKey = String.valueOf(key);
 				Object attributeVal = jsonObject.get(String.valueOf(key));
-				
+				String edge = attributeKey;
 				if(attributeVal instanceof JSONObject) {
-					Map<String,String> map = handleObjectAsMap( (JSONObject) attributeVal);
-					jedis.hmset(attributeKey, map);
+					
+					JSONObject embdObject = (JSONObject) attributeVal;
+					String setKey = uuid + SEP + edge;
+					String embd_uuid = embdObject.get("objectType") + SEP + embdObject.getString("objectId");
+					jedis.sadd(setKey, embd_uuid);
+					insertUtil(embdObject, embd_uuid);
+					
 				} else if (attributeVal instanceof JSONArray) {
-					Set<String> set  = handleObjectAsArray((JSONArray) attributeVal);
-					for(String v : set)
-						jedis.sadd(attributeKey, v);
+					
+					JSONArray jsonArray = (JSONArray) attributeVal;
+					Iterator<Object> jsonIterator = jsonArray.iterator();
+					String setKey = uuid + SEP + edge;
+					
+					while(jsonIterator.hasNext()) {
+						JSONObject embdObject = (JSONObject) jsonIterator.next();
+						String embd_uuid = embdObject.get("objectType") + SEP + embdObject.getString("objectId");
+						jedis.sadd(setKey, embd_uuid);
+						insertUtil(embdObject, embd_uuid);
+					}
+					
 				} else {
-					jedis.set(attributeKey, String.valueOf(attributeVal));
+					simpleMap.put(attributeKey, String.valueOf(attributeVal));
 				}
 			}
-			jedis.sadd("MyApplicationKeys", uuid);
+			jedis.hmset(uuid, simpleMap);
 			jedis.close();
 		}
 		catch(JedisException e) {
@@ -63,6 +105,7 @@ public class JedisBean {
 		return true;
 	}
 	
+	/*
 	private Map<String,String> handleObjectAsMap(JSONObject jsonObject) {
 		Map<String,String> map = new HashMap<String, String>();
 		for(String key : jsonObject.keySet()) {
@@ -79,15 +122,29 @@ public class JedisBean {
 		}
 		return set;
 	}
+	*/
 	
-	public boolean delete(String uuid) {
+	// delete plan
+	public boolean delete(String id) {
+		return deleteUtil("plan" + SEP + id);
+	}
+	
+	public boolean deleteUtil(String uuid) {
 		try {
 			Jedis jedis = pool.getResource();
-			Set<String> keys = jedis.keys(uuid+"*");
+			
+			// recursively deleting all embedded json objects
+			Set<String> keys = jedis.keys(uuid+SEP+"*");
 			for(String key : keys) {
+				Set<String> jsonKeySet = jedis.smembers(key);
+				for(String embd_uuid : jsonKeySet) {
+					deleteUtil(embd_uuid);
+				}
 				jedis.del(key);
 			}
-			jedis.srem("MyApplicationKeys", uuid);
+			
+			// deleting simple fields
+			jedis.del(uuid);
 			jedis.close();
 			return true;
 		} catch(JedisException e) {
@@ -96,11 +153,10 @@ public class JedisBean {
 		}
 	}
 	
-	public String read(String uuid) {
+	public String read(String id) {
 		
-			
 			System.out.println("Calling readutil");
-			JSONObject jsonObject = readUtil(uuid);
+			JSONObject jsonObject = readUtil("plan" + SEP + id);
 			if(jsonObject != null)
 				return jsonObject.toString();
 			else
@@ -112,11 +168,33 @@ public class JedisBean {
 			Jedis jedis = pool.getResource();
 			JSONObject o = new JSONObject();
 			System.out.println("Reading keys from pattern");
-			Set<String> keys = jedis.keys(uuid+"*");
-			for(String k : keys) {
-				System.out.println(k);
-			}
+			Set<String> keys = jedis.keys(uuid+SEP+"*");
+
+			// object members
 			for(String key : keys) {
+				Set<String> jsonKeySet = jedis.smembers(key);
+				
+				if(jsonKeySet.size() > 1) {
+					
+					JSONArray ja = new JSONArray();
+					Iterator<String> jsonKeySetIterator = jsonKeySet.iterator();
+					while(jsonKeySetIterator.hasNext()) {
+						ja.put(readUtil(jsonKeySetIterator.next()));
+					}
+					o.put(key.substring(key.lastIndexOf(SEP)+4), ja);
+				} else {
+					
+					Iterator<String> jsonKeySetIterator = jsonKeySet.iterator();
+					JSONObject embdObject = null;
+					while(jsonKeySetIterator.hasNext()) {
+						embdObject = readUtil(jsonKeySetIterator.next());
+					}
+					o.put(key.substring(key.lastIndexOf(SEP)+4), embdObject);
+					
+				}
+				
+				
+				/*
 				if(jedis.type(key).equalsIgnoreCase("set")) {
 					JSONArray ja = new JSONArray();
 					Set<String> set = jedis.smembers(key);
@@ -134,7 +212,15 @@ public class JedisBean {
 				} else {
 					o.put(key.substring(uuid.length()+1), jedis.get(key));
 				}
+				*/
 			}
+			
+			// simple members
+			Map<String,String> simpleMap = jedis.hgetAll(uuid);
+			for(String simpleKey : simpleMap.keySet()) {
+				o.put(simpleKey, simpleMap.get(simpleKey));
+			}
+			
 			jedis.close();
 			return o;
 		} catch(RedisException e) {
@@ -143,11 +229,11 @@ public class JedisBean {
 		}
 	}
 	
-	public boolean doesKeyExist(String uuid) {
+	public boolean doesKeyExist(String id) {
 		
 		try {
 			Jedis jedis = pool.getResource();
-			if(jedis.sismember("MyApplicationKeys", uuid)) {
+			if(jedis.exists(id) || !jedis.keys(id + SEP + "*").isEmpty()) {
 				jedis.close();
 				return true;
 			} else {
@@ -160,16 +246,43 @@ public class JedisBean {
 		}
 	}
 	
-	public boolean update(JSONObject jsonObject, String uuid) {
+	public boolean update(JSONObject jsonObject) {
 		try {
 			Jedis jedis = pool.getResource();
-			if( delete(uuid) && insertUtil(jsonObject, uuid)) {
-				jedis.close();
-				return true;
-			} else {
-				jedis.close();
+			String uuid = jsonObject.getString("objectType") + SEP + jsonObject.getString("objectId");
+			Map<String,String> simpleMap = jedis.hgetAll(uuid);
+			
+			if(!doesKeyExist(uuid))
 				return false;
+			
+			for(Object key : jsonObject.keySet()) {
+				String attributeKey = String.valueOf(key);
+				Object attributeVal = jsonObject.get(String.valueOf(key));
+				String edge = attributeKey;
+				
+				if(attributeVal instanceof JSONObject) {
+					
+					JSONObject embdObject = (JSONObject) attributeVal;
+					update(embdObject);
+					
+				} else if (attributeVal instanceof JSONArray) {
+					
+					JSONArray jsonArray = (JSONArray) attributeVal;
+					Iterator<Object> jsonIterator = jsonArray.iterator();
+					
+					while(jsonIterator.hasNext()) {
+						JSONObject embdObject = (JSONObject) jsonIterator.next();
+						update(embdObject);
+					}
+					
+				} else {
+					simpleMap.put(attributeKey, String.valueOf(attributeVal));
+				}
 			}
+			jedis.hmset(uuid, simpleMap);
+			jedis.close();
+			return true;
+			
 		} catch(JedisException e) {
 			e.printStackTrace();
 			return false;

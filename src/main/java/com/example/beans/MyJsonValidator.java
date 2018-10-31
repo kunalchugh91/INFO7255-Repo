@@ -1,5 +1,6 @@
 package com.example.beans;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -16,32 +17,28 @@ import org.springframework.http.ResponseEntity;
 public class MyJsonValidator {
 	
 	private Schema schema;
+	private JedisBean jedisBean;
 	
 	// constructor
-	public MyJsonValidator() {
-	    File file = new File("src/main/resources/schema.json");
-	    
-	    InputStream inputStream;
-		try {
-			inputStream = new FileInputStream(file);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			inputStream = null;
-		}
-	    if (inputStream == null) {
-	    	schema = null;
-	    } else {
-		    JSONObject rawSchema = new JSONObject(new JSONTokener(inputStream));
-		    schema = SchemaLoader.load(rawSchema);
-	    }
-	    
+	public MyJsonValidator(JedisBean j) {
+		jedisBean = j;
 	}
 	
 	// get schema
 	public Schema getSchema() {
+		if(schema != null)
+			return schema;
+		
+		refreshSchema();
 		return schema;
 	}
+	
+	// refresh schema
+	public void refreshSchema() {
+		String schemaString = jedisBean.getSchema();
+		schema = SchemaLoader.load(new JSONObject(new JSONTokener(new ByteArrayInputStream(schemaString.getBytes()))));
+	}
+	
 	
 	// get JSONObject from String
 	public JSONObject getJsonObjectFromString(String jsonString) {
@@ -52,11 +49,13 @@ public class MyJsonValidator {
 	public boolean validate(JSONObject jsonObject) {
 		try {
 			schema.validate(jsonObject);
+			System.out.println("Validation success");
+			return true;
 		}
 		catch (ValidationException e) {
+			e.printStackTrace();
 			return false;
 		}
-		return true;
 	}
 
 }

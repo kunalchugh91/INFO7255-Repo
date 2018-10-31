@@ -12,7 +12,7 @@ public class RedisConfig {
 
 	@Bean("validator")
 	public MyJsonValidator myJsonValidator() {
-		return new MyJsonValidator() ;
+		return new MyJsonValidator(jedisBean()) ;
 	}
 	
 	@Bean("jedisBean")
