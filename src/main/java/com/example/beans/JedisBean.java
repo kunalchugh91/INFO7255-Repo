@@ -251,9 +251,14 @@ public class JedisBean {
 			Jedis jedis = pool.getResource();
 			String uuid = jsonObject.getString("objectType") + SEP + jsonObject.getString("objectId");
 			Map<String,String> simpleMap = jedis.hgetAll(uuid);
+			if(simpleMap.isEmpty()) {
+				simpleMap = new HashMap<String,String>();
+			}
 			
+			/*
 			if(!doesKeyExist(uuid))
 				return false;
+			*/
 			
 			for(Object key : jsonObject.keySet()) {
 				String attributeKey = String.valueOf(key);
@@ -263,15 +268,21 @@ public class JedisBean {
 				if(attributeVal instanceof JSONObject) {
 					
 					JSONObject embdObject = (JSONObject) attributeVal;
+					String setKey = uuid + SEP + edge;
+					String embd_uuid = embdObject.get("objectType") + SEP + embdObject.getString("objectId");
+					jedis.sadd(setKey, embd_uuid);
 					update(embdObject);
 					
 				} else if (attributeVal instanceof JSONArray) {
 					
 					JSONArray jsonArray = (JSONArray) attributeVal;
 					Iterator<Object> jsonIterator = jsonArray.iterator();
+					String setKey = uuid + SEP + edge;
 					
 					while(jsonIterator.hasNext()) {
 						JSONObject embdObject = (JSONObject) jsonIterator.next();
+						String embd_uuid = embdObject.get("objectType") + SEP + embdObject.getString("objectId");
+						jedis.sadd(setKey, embd_uuid);
 						update(embdObject);
 					}
 					
