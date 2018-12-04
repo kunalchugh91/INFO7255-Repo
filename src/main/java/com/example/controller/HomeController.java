@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 //import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.beans.ElasticSearchConnect;
 import com.example.beans.JedisBean;
 import com.example.beans.MyJsonValidator;
 
@@ -41,6 +42,8 @@ public class HomeController {
 	private MyJsonValidator validator;
 	@Autowired
 	private JedisBean jedisBean;
+	@Autowired
+	private ElasticSearchConnect elasticSearchConnect;
 	
 	private String key = "abcdefghijklmnopqrstuvwx";
 	private String algorithm = "DESede";
@@ -85,6 +88,7 @@ public class HomeController {
 		
 		if(validator.validate(jsonObject)) {
 			String uuid = jedisBean.insert(jsonObject);
+			elasticSearchConnect.runTask(uuid, jsonObject);
 			return new ResponseEntity<String>("Inserted with id "+uuid, HttpStatus.ACCEPTED);
 		}
 		else {
@@ -95,15 +99,16 @@ public class HomeController {
 	
 	
 	// to delete json instance with key id from redis
-	@DeleteMapping("/Plan/{id}")
-	public ResponseEntity<String> delete(@PathVariable(name="id", required=true) String id, @RequestHeader HttpHeaders requestHeaders) {
+	@DeleteMapping("/Plan")
+	public ResponseEntity<String> delete(@RequestBody(required=true) String body, @RequestHeader HttpHeaders requestHeaders) {
 		
 		if(!authorize(requestHeaders)) {
 			return new ResponseEntity<String>("Token authorization failed", HttpStatus.NOT_ACCEPTABLE);
 		}
 		
-		if(jedisBean.delete(id))
-			return new ResponseEntity<String>(id+" deleted successfully", HttpStatus.ACCEPTED);
+		if(jedisBean.delete(body) && elasticSearchConnect.deleteTask(body)) {
+			return new ResponseEntity<String>("Deleted successfully", HttpStatus.ACCEPTED);
+		}
 		else
 			return new ResponseEntity<String>("Deletion unsuccessfull", HttpStatus.BAD_REQUEST);
 	}
@@ -129,6 +134,7 @@ public class HomeController {
 			return new ResponseEntity<String>("Failed to update JSON instance in Redis", HttpStatus.BAD_REQUEST);
 		
 		System.out.println("");
+		elasticSearchConnect.runTask(jsonObject.getString("objectId"), jsonObject);
 		return new ResponseEntity<String>("JSON instance updated in redis", HttpStatus.ACCEPTED);
 	
 	}

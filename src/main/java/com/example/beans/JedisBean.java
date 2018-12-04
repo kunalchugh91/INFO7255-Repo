@@ -105,28 +105,12 @@ public class JedisBean {
 		return true;
 	}
 	
-	/*
-	private Map<String,String> handleObjectAsMap(JSONObject jsonObject) {
-		Map<String,String> map = new HashMap<String, String>();
-		for(String key : jsonObject.keySet()) {
-			map.put(key, jsonObject.get(key).toString());
-		}
-		return map;
-	}
-	
-	private Set<String> handleObjectAsArray(JSONArray jsonArray) {
-		Set<String> set = new HashSet<String>();
-		for(Object o : jsonArray) {
-			JSONObject ob = (JSONObject) o;
-			set.add(ob.toString());
-		}
-		return set;
-	}
-	*/
-	
 	// delete plan
-	public boolean delete(String id) {
-		return deleteUtil("plan" + SEP + id);
+	public boolean delete(String body) {
+		JSONObject json = new JSONObject(body);
+		if(!json.has("objectType") || !json.has("objectId"))
+			return false;
+		return deleteUtil(json.getString("objectType") + SEP + json.getString("objectId"));
 	}
 	
 	public boolean deleteUtil(String uuid) {
@@ -193,26 +177,6 @@ public class JedisBean {
 					
 				}
 				
-				
-				/*
-				if(jedis.type(key).equalsIgnoreCase("set")) {
-					JSONArray ja = new JSONArray();
-					Set<String> set = jedis.smembers(key);
-					for(String member : set) {
-						ja.put(new JSONObject(member));
-					}
-					o.put(key.substring(uuid.length()+1), ja);
-				} else if (jedis.type(key).equalsIgnoreCase("hash")) {
-					Map<String, String> map = jedis.hgetAll(key);
-					JSONObject n = new JSONObject();
-					for(String k : map.keySet()) {
-						n.put(k, map.get(k));
-					}
-					o.put(key.substring(uuid.length()+1), n);
-				} else {
-					o.put(key.substring(uuid.length()+1), jedis.get(key));
-				}
-				*/
 			}
 			
 			// simple members

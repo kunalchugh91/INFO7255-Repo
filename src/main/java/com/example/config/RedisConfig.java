@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.filter.ShallowEtagHeaderFilter;
 
+import com.example.beans.ElasticSearchConnect;
 import com.example.beans.JedisBean;
 import com.example.beans.MyJsonValidator;
 
@@ -21,6 +22,11 @@ public class RedisConfig {
 	@Bean("jedisBean")
 	public JedisBean jedisBean() {
 		return new JedisBean() ;
+	}
+	
+	@Bean("elasticSearchConnect")
+	public ElasticSearchConnect elasticSearchConnect() {
+		return new ElasticSearchConnect() ;
 	}
 	
     @Bean
